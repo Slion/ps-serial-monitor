@@ -1,4 +1,44 @@
 
+$tui = $false
+
+<#
+From: https://stackoverflow.com/a/51692402/3969362
+#>
+function LoadModule ($m) {
+
+    # If module is imported say that and do nothing
+    if (Get-Module | Where-Object {$_.Name -eq $m}) {
+        #write-host "Module $m is already imported."
+        return $true
+    }
+    else
+    {
+        # If module is not imported, but available on disk then import
+        if (Get-Module -ListAvailable | Where-Object {$_.Name -eq $m})
+        {
+            Import-Module $m -Verbose
+            return $true
+        }
+        else
+        {
+            # If module is not imported, not available on disk, but is in online gallery then install and import
+            if (Find-Module -Name $m | Where-Object {$_.Name -eq $m})
+            {
+                Write-Host "To enable advanced features run the following command from an admin PowerShell console:"
+                Write-Host "Install-Module $m" -ForegroundColor Yellow
+                Install-Module -Name $m -Force -Verbose -Scope CurrentUser
+                Import-Module $m -Verbose
+            }
+            else
+            {
+                # If the module is not imported, not available and not in the online gallery then abort
+                write-host "Module $m not imported, not available and not in an online gallery, exiting."
+            }
+            return $false
+        }
+    }
+}
+
 <#
 Display com ports on our console host
 #>
@@ -18,9 +58,11 @@ function MonitorPort()
     $wasMonitoring = $false
     # TODO: Have those as parameters from the script
     # TODO: Use a map with description
+    # See: https://github.com/raspberrypi/usb-pid/blob/main/Readme.md
     $pnpDeviceIds = @(
-        "USB\\VID_2E8A&PID_0009" # RPi Pico 2 W USB CDC stdio
-        "USB\\VID_2E8A&PID_000C" # RPi RP2040 Debug Probe
+        "USB\\VID_2E8A&PID_0009" # RPi Pico 2 W USB CDC stdio - Raspberry Pi Pico SDK CDC UART
+        "USB\\VID_2E8A&PID_000A" # Raspberry Pi Pico SDK CDC UART (RP2040) - Did not run into this one yet
+        "USB\\VID_2E8A&PID_000C" # RPi RP2040 Debug Probe - Raspberry Pi RP2040 CMSIS-DAP debug adapter
     )
 
     $pnpDeviceIdsRe = $pnpDeviceIds -join '|'
@@ -56,28 +98,42 @@ function MonitorPort()
             $port.Open()
             Write-Host "Monitoring $($device.DeviceID)..."
             $wasMonitoring = $true
+
+            #Register-ObjectEvent -InputObject $port -EventName "DataReceived" -SourceIdentifier "SerialPort.DataReceived"
+
+
             #$counter = 0
             $charInput = ""
             do {
+                    # $dataEvent = Wait-Event -SourceIdentifier "SerialPort.DataReceived" -Timeout 1
+                    # if ($dataEvent)
+                    # {
+                    #     Remove-Event -EventIdentifier $dataEvent.EventIdentifier
+                    # }
+
                     #Write-Host "Write: ${counter}"
                     #$port.Write($counter)
                     # Wait long enough for our board to respond
                     #Start-Sleep -Milliseconds 100;
+                    #Write-Host "ReadExisting"
                     $read = $port.ReadExisting()
+                    #Write-Host "ReadExisting -done"
                     if ($read) {
                         #TODO: have a different color to distinguish for our logs
                         # See: https://stackoverflow.com/questions/20541456/list-of-all-colors-available-for-powershell
                         # Gray is the default
-                        # DarkYellow DarkGray DarkCyan DarkGreen DarkMagenta
+                        # DarkYellow DarkGray DarkCyan DarkGreen DarkMagenta Yellow
                         # Can't use us custo color for some reason 0xFFFAEBD7
-                        Write-Host -NoNewline $read -Foreground DarkCyan
+                        Write-Host $read -NoNewline -Foreground DarkCyan
                     }
 
                     # Check if user pressed a key
-                    if ($Host.UI.RawUI.KeyAvailable) {
+                    # Boken in PS 7: $host.UI.RawUI.KeyAvailable
+                    # See: https://github.com/PowerShell/PSReadLine/issues/959
+                    if ([Console]::KeyAvailable) {
                         # Get next key
                         # See: https://learn.microsoft.com/en-us/dotnet/api/system.management.automation.host.pshostrawuserinterface.readkey
-                        $key = $Host.UI.RawUI.ReadKey();
+                        $key = $host.UI.RawUI.ReadKey();
                         #$Host.UI.RawUI.ReadKey("IncludeKeyUp,NoEcho").Character))
                         #Write-Host $key
                         # Check if return was pressed
@@ -110,7 +166,7 @@ function MonitorPort()
     }
     catch
     {
-        $_
+        Write-Host $_
     }
     finally
     {
@@ -144,13 +200,21 @@ function TryMonitorPort()
     return $wasMonitoring
 }
 
-Try
+try
 {
+    # Check if Terminal UI is installed
+    <#
+    if (LoadModule("Microsoft.PowerShell.ConsoleGuiTools"))
+    {
+        Write-Host "Advanced features enabled"
+        $tui = $true
+    }
+    #>
     # Register for device connection events
     # See: https://stackoverflow.com/a/16374535/3969362
     # Though we use the PowerShell event queue instead of the action callback as it would block further WMI event from being processed
     $query = "SELECT * FROM Win32_DeviceChangeEvent WHERE EventType = 2"
-    $null = Register-WMIEvent -Query $query -SourceIdentifier "Device.Connected"
+    $null = Register-CimIndicationEvent -Query $query -SourceIdentifier "Device.Connected"
 
     DisplayComPorts
 
@@ -170,7 +234,7 @@ Try
     While($True)
 
 }
-Finally
+finally
 {
     # Cancel all event subscriptions
     # See: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unregister-event
