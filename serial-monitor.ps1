@@ -57,6 +57,7 @@ function MonitorPort()
             Write-Host "Monitoring $($device.DeviceID)..."
             $wasMonitoring = $true
             #$counter = 0
+            $charInput = ""
             do {
                     #Write-Host "Write: ${counter}"
                     #$port.Write($counter)
@@ -70,6 +71,36 @@ function MonitorPort()
                         # DarkYellow DarkGray DarkCyan DarkGreen DarkMagenta
                         # Can't use us custo color for some reason 0xFFFAEBD7
                         Write-Host -NoNewline $read -Foreground DarkCyan
+                    }
+
+                    # Check if user pressed a key
+                    if ($Host.UI.RawUI.KeyAvailable) {
+                        # Get next key
+                        # See: https://learn.microsoft.com/en-us/dotnet/api/system.management.automation.host.pshostrawuserinterface.readkey
+                        $key = $Host.UI.RawUI.ReadKey();
+                        #$Host.UI.RawUI.ReadKey("IncludeKeyUp,NoEcho").Character))
+                        #Write-Host $key
+                        # Check if return was pressed
+                        # See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+                        #if ($key.VirtualKeyCode -eq 0x0D)
+                        if ($key.Character -eq "`r")
+                        {
+                            if ($charInput -eq "")
+                            {
+                                # Send new line if return is pressed without input
+                                $port.Write("`n")
+                            }
+                            else
+                            {
+                                # Send input when return is pressed
+                                $port.Write($charInput)
+                                $charInput = ""
+                            }
+                        }
+                        else
+                        {
+                            $charInput = "$charInput$($key.Character)"
+                        }
                     }
 
                     # Discard events from our queue otherwise WMI events would accumulate
@@ -131,6 +162,7 @@ Try
         while (TryMonitorPort) {}
         # Wait for device connection event before trying to find our COM port again
         # Discard output see: https://stackoverflow.com/a/18413183/3969362
+        # TODO: do timeout and process keys to specify a port to connect to for instance see above how we did it
         $wmiEvent = Wait-Event -SourceIdentifier "Device.Connected"
         Remove-Event -EventIdentifier $wmiEvent.EventIdentifier
         #Start-Sleep 3
