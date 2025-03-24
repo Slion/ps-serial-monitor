@@ -61,7 +61,7 @@ function MonitorPort()
     # See: https://github.com/raspberrypi/usb-pid/blob/main/Readme.md
     $pnpDeviceIds = @(
         "USB\\VID_2E8A&PID_0009" # RPi Pico 2 W USB CDC stdio - Raspberry Pi Pico SDK CDC UART
-        "USB\\VID_2E8A&PID_000A" # Raspberry Pi Pico SDK CDC UART (RP2040) - Did not run into this one yet
+        "USB\\VID_2E8A&PID_000A" # RPi Pico W USB CDC stdio - Raspberry Pi Pico SDK CDC UART (RP2040)
         "USB\\VID_2E8A&PID_000C" # RPi RP2040 Debug Probe - Raspberry Pi RP2040 CMSIS-DAP debug adapter
     )
 
@@ -210,6 +210,7 @@ try
         $tui = $true
     }
     #>
+
     # Register for device connection events
     # See: https://stackoverflow.com/a/16374535/3969362
     # Though we use the PowerShell event queue instead of the action callback as it would block further WMI event from being processed
